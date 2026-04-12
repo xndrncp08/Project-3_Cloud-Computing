@@ -1,0 +1,11 @@
+{
+  "bindings": [
+    {
+      "name": "myBlob",
+      "type": "blobTrigger",
+      "direction": "in",
+      "path": "dietdata/All_Diets.csv",
+      "connection": "BLOB_CONNECTION_STRING"
+    }
+  ]
+}

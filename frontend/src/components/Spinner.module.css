@@ -1,0 +1,9 @@
+/* src/components/Spinner.module.css */
+.spinner {
+  border-style: solid;
+  border-color: var(--border2);
+  border-top-color: var(--accent2);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
