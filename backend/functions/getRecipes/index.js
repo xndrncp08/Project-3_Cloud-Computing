@@ -1,58 +1,40 @@
 // functions/getRecipes/index.js
-// Supports: keyword search, diet type filter, pagination
-// Query params: keyword, dietType, page (1-based), pageSize (default 10)
-// Auth required.
+const { app } = require("@azure/functions");
 const { getRedisClient, KEYS } = require("../../shared/redisClient");
-const { withCors, requireAuth, jsonResponse } = require("../../shared/auth");
+const { verifyToken, getCorsHeaders } = require("../../shared/auth");
 
-module.exports = withCors(async function (context, req) {
-  const user = requireAuth(context, req);
-  if (!user) return;
+app.http("getRecipes", {
+  methods: ["GET", "OPTIONS"],
+  authLevel: "anonymous",
+  route: "recipes",
+  handler: async (req, context) => {
+    const corsHeaders = getCorsHeaders(req);
+    if (req.method === "OPTIONS") return { status: 204, headers: corsHeaders };
 
-  const redis = getRedisClient();
-  const raw = await redis.get(KEYS.RECIPES_ALL);
+    const json = (status, body) => ({ status, headers: { ...corsHeaders, "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-  if (!raw) {
-    return jsonResponse(context, req, 503, {
-      error: "Recipe data not ready. Upload All_Diets.csv to blob storage.",
-    });
-  }
+    const user = verifyToken(req);
+    if (!user) return json(401, { error: "Unauthorized" });
 
-  let recipes = JSON.parse(raw);
+    const redis = getRedisClient();
+    const raw = await redis.get(KEYS.RECIPES_ALL);
+    if (!raw) return json(503, { error: "Recipe data not ready. Upload All_Diets.csv to blob storage." });
 
-  // ── Query params ───────────────────────────────────────────────────────────
-  const keyword = (req.query.keyword || "").toLowerCase().trim();
-  const dietType = (req.query.dietType || "").trim();
-  const page = Math.max(1, parseInt(req.query.page || "1", 10));
-  const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize || "10", 10)));
+    let recipes = JSON.parse(raw);
 
-  // ── Filter by diet type ────────────────────────────────────────────────────
-  if (dietType && dietType !== "All") {
-    recipes = recipes.filter(
-      (r) => r.dietType.toLowerCase() === dietType.toLowerCase()
-    );
-  }
+    const keyword  = (req.query.get("keyword")  || "").toLowerCase().trim();
+    const dietType = (req.query.get("dietType")  || "").trim();
+    const page     = Math.max(1, parseInt(req.query.get("page")     || "1",  10));
+    const pageSize = Math.min(50, Math.max(1, parseInt(req.query.get("pageSize") || "10", 10)));
 
-  // ── Keyword search across name, cuisine, dietType ─────────────────────────
-  if (keyword) {
-    recipes = recipes.filter((r) => r.searchText.includes(keyword));
-  }
+    if (dietType && dietType !== "All") recipes = recipes.filter(r => r.dietType.toLowerCase() === dietType.toLowerCase());
+    if (keyword) recipes = recipes.filter(r => r.searchText.includes(keyword));
 
-  // ── Pagination ─────────────────────────────────────────────────────────────
-  const totalCount = recipes.length;
-  const totalPages = Math.ceil(totalCount / pageSize);
-  const start = (page - 1) * pageSize;
-  const pageData = recipes.slice(start, start + pageSize);
+    const totalCount  = recipes.length;
+    const totalPages  = Math.ceil(totalCount / pageSize);
+    const start       = (page - 1) * pageSize;
+    const pageData    = recipes.slice(start, start + pageSize);
 
-  return jsonResponse(context, req, 200, {
-    recipes: pageData,
-    pagination: {
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
-      hasNext: page < totalPages,
-      hasPrev: page > 1,
-    },
-  });
+    return json(200, { recipes: pageData, pagination: { page, pageSize, totalCount, totalPages, hasNext: page < totalPages, hasPrev: page > 1 } });
+  },
 });

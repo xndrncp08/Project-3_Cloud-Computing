@@ -1,9 +1,14 @@
 // functions/logout/index.js
-// POST /api/auth/logout
-// JWTs are stateless — actual logout is handled client-side by deleting the token.
-// This endpoint exists so the frontend has a clean POST to call.
-const { withCors, jsonResponse } = require("../../shared/auth");
+const { app } = require("@azure/functions");
+const { getCorsHeaders } = require("../../shared/auth");
 
-module.exports = withCors(async function (context, req) {
-  return jsonResponse(context, req, 200, { message: "Logged out successfully" });
+app.http("logout", {
+  methods: ["POST", "OPTIONS"],
+  authLevel: "anonymous",
+  route: "auth/logout",
+  handler: async (req, context) => {
+    const corsHeaders = getCorsHeaders(req);
+    if (req.method === "OPTIONS") return { status: 204, headers: corsHeaders };
+    return { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ message: "Logged out successfully" }) };
+  },
 });

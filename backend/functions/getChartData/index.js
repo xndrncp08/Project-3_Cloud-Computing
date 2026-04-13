@@ -1,22 +1,25 @@
 // functions/getChartData/index.js
-// Returns pre-computed chart data from Redis.
-// NEVER reads the CSV — all work was done by blobTrigger.
+const { app } = require("@azure/functions");
 const { getRedisClient, KEYS } = require("../../shared/redisClient");
-const { withCors, requireAuth, jsonResponse } = require("../../shared/auth");
+const { verifyToken, getCorsHeaders } = require("../../shared/auth");
 
-module.exports = withCors(async function (context, req) {
-  // Require login to view dashboard data
-  const user = requireAuth(context, req);
-  if (!user) return;
+app.http("getChartData", {
+  methods: ["GET", "OPTIONS"],
+  authLevel: "anonymous",
+  route: "chartData",
+  handler: async (req, context) => {
+    const corsHeaders = getCorsHeaders(req);
+    if (req.method === "OPTIONS") return { status: 204, headers: corsHeaders };
 
-  const redis = getRedisClient();
-  const raw = await redis.get(KEYS.CHART_DATA);
+    const json = (status, body) => ({ status, headers: { ...corsHeaders, "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-  if (!raw) {
-    return jsonResponse(context, req, 503, {
-      error: "Chart data not ready. Upload All_Diets.csv to blob storage to trigger processing.",
-    });
-  }
+    const user = verifyToken(req);
+    if (!user) return json(401, { error: "Unauthorized" });
 
-  return jsonResponse(context, req, 200, JSON.parse(raw));
+    const redis = getRedisClient();
+    const raw = await redis.get(KEYS.CHART_DATA);
+    if (!raw) return json(503, { error: "Chart data not ready. Upload All_Diets.csv to blob storage to trigger processing." });
+
+    return json(200, JSON.parse(raw));
+  },
 });
